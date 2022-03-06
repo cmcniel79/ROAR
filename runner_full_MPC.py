@@ -6,7 +6,7 @@ from ROAR.agent_module.pure_pursuit_agent import PurePursuitAgent
 from ROAR.configurations.configuration import Configuration as AgentConfig
 import argparse
 from misc.utils import str2bool
-from ROAR.agent_module.throttle_mpc_agent import MPCAgent
+from ROAR.agent_module.full_mpc_agent import MPCAgent
 
 
 def main(args):

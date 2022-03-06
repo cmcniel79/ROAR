@@ -5,7 +5,6 @@ from ROAR.utilities_module.vehicle_models import VehicleControl, Vehicle
 from ROAR.utilities_module.data_structures_models import Transform, Location
 from collections import deque
 import numpy as np
-import math
 import logging
 from ROAR.agent_module.agent import Agent
 from typing import Tuple
@@ -100,8 +99,7 @@ class LongMPCController(Controller):
         constr = []
         for m in range(M):
             cost += cp.sum_squares(x - target)
-            constr += [x[:, m + 1] == self.A @ x[:, m] + self.B @ u[:, m],
-                    cp.norm(u[:, m], 'inf') <= 1]
+            constr += [x[:, m + 1] == self.A @ x[:, m] + self.B @ u[:, m]]
 
         # Concatenates model constraints
         constr += [x[:, 0] == current]

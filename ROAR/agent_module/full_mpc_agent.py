@@ -1,6 +1,6 @@
 from ROAR.agent_module.agent import Agent
 from pathlib import Path
-from ROAR.control_module.mpc_throttle_controller import MPCController
+from ROAR.control_module.mpc_full_controller import MPCController
 from ROAR.planning_module.local_planner.loop_simple_waypoint_following_local_planner import \
     LoopSimpleWaypointFollowingLocalPlanner
 from ROAR.planning_module.behavior_planner.behavior_planner import BehaviorPlanner
@@ -14,7 +14,7 @@ class MPCAgent(Agent):
     def __init__(self, target_speed=40, **kwargs):
         super().__init__(**kwargs)
         self.target_speed = target_speed
-        self.logger = logging.getLogger("MPC Throttle Agent")
+        self.logger = logging.getLogger("Full MPC Agent")
         self.route_file_path = Path(self.agent_settings.waypoint_file_path)
         self.mpc_controller = MPCController(agent=self, steering_boundary=(-1, 1), throttle_boundary=(0, 1))
         self.mission_planner = WaypointFollowingMissionPlanner(agent=self)
