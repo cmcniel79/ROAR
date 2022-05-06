@@ -19,15 +19,18 @@ F_friction = 133  # N
 C_d = .46  # Drag coefficient
 
 # Lateral Dynamics Parameters   
-B = 2
-C = .50
-mu = 9
+B = 4.52
+C = 2.16
+# To match the parameter fitting optimization program for the lateral dynamics model,
+# mu should be set to 1 but that appears to make steering not aggressive enough, 
+# so mu is set to .75 here instead 
+mu = .75
 wheelbase = 3.0
 Izz = 0.95 * mass / (wheelbase / 2) ** 2
 Lf = 1.62
 Lr = 1.38
-Ff_z = 5430
-Fr_z = 12670
+Ff_z = 7239
+Fr_z = 10859
 max_angle = np.deg2rad(70.0)
 
 # Optimization Parameters
@@ -81,7 +84,8 @@ class FullMPCController(Controller):
         return (Fr_x + F_friction + C_d * vx**2) / b_motor
 
     def get_steer_CMD(self, Ff_y, beta, r, vx):
-        alpha_f = np.tan(np.arcsin(Ff_y / (-mu * Ff_z)) / C) / B
+        arcsin_arg = np.clip(Ff_y / (-mu * Ff_z), -1, 1)
+        alpha_f = np.tan(np.arcsin(arcsin_arg) / C) / B
         steer_angle = np.arctan(beta + ((r * Lf) / (vx + 10e-1))) - alpha_f 
         steer_cmd = steer_angle / max_angle
         self.last_steer_CMD = np.abs(steer_cmd)
@@ -99,10 +103,12 @@ class FullMPCController(Controller):
         Fr_y_eq = (Lf * Ff_y_eq * np.cos(steer_angle_eq)) / Lr
 
         # Find x,y components of velocity
-        a_13 = -Fr_y_eq + Ff_y_eq * np.cos(steer_angle_eq)
-        a_31 = vx_eq * r_eq \
-            + ((Ff_y_eq * np.cos(steer_angle_eq)) / mass) \
-            * (1 /(1 + (beta_eq + ((r_eq * Lf) / vx_eq))**2))
+        a_13 = -(Fr_y_eq + Ff_y_eq * np.cos(steer_angle_eq)) / (mass * vx_eq)
+        a_31 = -vx_eq * r_eq
+        # More complex a_13 term that comes from Gonzales dissertation 
+        # a_31 = vx_eq * r_eq \
+            # + ((Ff_y_eq * np.cos(steer_angle_eq)) / mass) \
+            # * (1 /(1 + (beta_eq + ((r_eq * Lf) / vx_eq))**2))
 
         Ac = np.array([
             [0, -1, a_13], 
@@ -237,7 +243,7 @@ class FullMPCController(Controller):
             error *= -1
 
         # Set the target speed manually for testing
-        target_speed = 80
+        target_speed = 100
         target_beta = -error
         target_vx = target_speed * np.cos(current_beta)
 
