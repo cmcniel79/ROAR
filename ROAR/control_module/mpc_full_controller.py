@@ -24,7 +24,7 @@ C = 2.16
 # To match the parameter fitting optimization program for the lateral dynamics model,
 # mu should be set to 1 but that appears to make steering not aggressive enough, 
 # so mu is set to .75 here instead 
-mu = .75
+mu = 1
 wheelbase = 3.0
 Izz = 0.95 * mass / (wheelbase / 2) ** 2
 Lf = 1.62
@@ -79,6 +79,7 @@ class FullMPCController(Controller):
         self.A_matrices, self.B_matrices = self.construct_linearized_matrices()
         self.Q = np.diag([1, 1, 0, 1, 0, 0])
         self.last_steer_CMD = 0
+        self.starting_yaw = -np.pi / 2
 
     def get_throttle_CMD(self, Fr_x, vx):
         return (Fr_x + F_friction + C_d * vx**2) / b_motor
@@ -175,7 +176,9 @@ class FullMPCController(Controller):
         A, B = self.get_linearized_matrices(self.last_steer_CMD * max_angle)
 
         for m in range(M):
-            cost += cp.sum_squares(x[0, m] - target_state[0])
+            cost += 10**3 * cp.sum_squares(x[0, m] - target_state[0])
+            if np.abs(target_state[0]) < np.pi / 20:
+                cost += 10**1 * cp.sum_squares(x[1, m] - target_state[1])
             cost += cp.sum_squares(x[2, m] - target_state[2])
 
             constr += [x[:, m + 1] == A @ x[:, m] + B @ u[:, m]]
@@ -189,24 +192,38 @@ class FullMPCController(Controller):
                 constr += [u[:, m + 1] - u[:, m] <= delta_lim, u[:, m + 1] - u[:, m] >= -delta_lim]
 
         # Set final state constraints
-        cost += cp.sum_squares(x[0, M] - target_state[0])
+        cost += 10**3 * cp.sum_squares(x[0, M] - target_state[0])
+        if np.abs(target_state[0]) < np.pi / 20:
+            cost += 10**1 * cp.sum_squares(x[1, M] - target_state[1])
         cost += cp.sum_squares(x[2, M] - target_state[2])
 
         problem = cp.Problem(cp.Minimize(cost), constr)
-        problem.solve(warm_start=True)
 
-        uOpt = u.value
-        # In case optimizer doesnt return any values for u
-        if uOpt is None or uOpt.size == 0 or np.isnan(uOpt[0][0]):
+        try:
+            problem.solve(warm_start=True)
+
+            uOpt = u.value
+
+            # In case optimizer doesnt return any values for u
+            if uOpt is None or uOpt.size == 0 or np.isnan(uOpt[0][0]):
+                print('-------- STEERING FAILED --------')
+                if target_state[0] < 0:
+                    Ff_y_cmd = 1000
+                else:
+                    Ff_y_cmd = -1000
+            else:
+                Ff_y_cmd = u.value[0, 0]
+            
+            if uOpt is None or uOpt.size == 0 or np.isnan(uOpt[0][1]):
+                Fr_x_cmd = 5000
+            else:
+                Fr_x_cmd = u.value[1, 0]
+
+        except:
             Ff_y_cmd = 0.0
-        else:
-            Ff_y_cmd = u.value[0, 0]
-        
-        if uOpt is None or uOpt.size == 0 or np.isnan(uOpt[0][1]):
-            Fr_x_cmd = 5000
-        else:
-            Fr_x_cmd = u.value[1, 0]
-        
+            Fr_x_cmd = 2000
+            print('-------- SOLVER FAILED --------')
+            
         return self.get_throttle_CMD(Fr_x_cmd, current_state[2]), self.get_steer_CMD(Ff_y_cmd, *current_state)
 
 
@@ -242,19 +259,31 @@ class FullMPCController(Controller):
         if _cross[1] > 0:
             error *= -1
 
+        # error = np.mod(error, 2 * np.pi)
+        # print(np.round(error, 2))
+
         # Set the target speed manually for testing
         target_speed = 100
         target_beta = -error
         target_vx = target_speed * np.cos(current_beta)
 
+        # make sure the angle is in [-pi,pi]
+        current_yaw = current_yaw - self.starting_yaw
+        current_yaw = np.mod(current_yaw + np.pi / 4, np.pi/2) - np.pi / 4
+
+        print(f'Yaw: {np.round(current_yaw, 2)}')
+        print(f'Current Beta: {np.round(current_beta, 2)}')
+        print(f'Target Beta: {np.round(target_beta, 2)}')
+        print(f'Error: {np.round(error, 2)}')
+
         motor_cmd, steer_cmd = self.solve_cftoc(
-            target_state=np.array([target_beta, 0, target_vx]), 
+            target_state=np.array([target_beta, current_yaw, target_vx]), 
             current_state=np.array([current_beta, current_yaw, current_vx]), 
             state_bounds=np.array([
-                [0, 0], 
-                [0, 0],
+                [-2 * np.pi, 2 * np.pi], 
+                [-2 * np.pi, 2 * np.pi],
                 [-100, 200]]), 
-            input_bounds=np.array([[-3000, 3000], [-1000, 10000]]))
+            input_bounds=np.array([[-6000, 6000], [-1000, 10000]]))
 
         return motor_cmd, steer_cmd
 
